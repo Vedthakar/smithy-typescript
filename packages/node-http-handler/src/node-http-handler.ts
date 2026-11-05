@@ -40,6 +40,19 @@ let hAgent: { new (...args: any): hAgentType } | undefined = undefined;
 let hRequest: typeof hRequestType | undefined = undefined;
 
 /**
+ * Builds the error for a request that cannot complete because the handler was destroyed.
+ * It is named "AbortError" so that retry strategies treat it as terminal.
+ */
+const buildDestroyedError = (cause?: Error): Error => {
+  const error = new Error("Request aborted: NodeHttpHandler was destroyed.");
+  error.name = "AbortError";
+  if (cause) {
+    (error as { cause?: unknown }).cause = cause;
+  }
+  return error;
+};
+
+/**
  * A request handler that uses the Node.js http and https modules.
  *
  * @public
@@ -48,6 +61,7 @@ export class NodeHttpHandler implements HttpHandler<NodeHttpHandlerOptions> {
   private config?: ResolvedNodeHttpHandlerConfig;
   private configProvider: Promise<ResolvedNodeHttpHandlerConfig>;
   private socketWarningTimestamp = 0;
+  private destroyed = false;
   private externalAgent = false;
 
   // Node http handler is hard-coded to http/1.1: https://github.com/nodejs/node/blob/ff5664b83b89c55e4ab5d5f60068fb457f1f5872/lib/_http_server.js#L286
@@ -140,6 +154,7 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.config?.httpAgent?.destroy();
     this.config?.httpsAgent?.destroy();
   }
@@ -189,6 +204,12 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
         clearTimeouts();
         _reject(arg);
       };
+
+      // a destroyed handler must not open new connections.
+      if (this.destroyed) {
+        reject(buildDestroyedError());
+        return;
+      }
 
       // if the request was already aborted, prevent doing extra work
       if (abortSignal?.aborted) {
@@ -268,7 +289,11 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
       });
 
       req.on("error", (err: Error) => {
-        if (NODEJS_TIMEOUT_ERROR_CODES.includes((err as any).code)) {
+        if (this.destroyed) {
+          // The socket was closed by destroy(). This is not a transient network error,
+          // so it must not be retried on a new connection.
+          reject(buildDestroyedError(err));
+        } else if (NODEJS_TIMEOUT_ERROR_CODES.includes((err as any).code)) {
           reject(Object.assign(err, { name: "TimeoutError" }));
         } else {
           reject(err);
