@@ -163,8 +163,6 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
     request: HttpRequest,
     { abortSignal, requestTimeout }: HttpHandlerOptions = {}
   ): Promise<{ response: HttpResponse }> {
-    // used to tell whether destroy() was called while this request was in flight.
-    const destroyCountAtStart = this.destroyCount;
     if (!this.config) {
       this.config = await this.configProvider;
     }
@@ -177,6 +175,9 @@ or increase socketAcquisitionWarningTimeout=(millis) in the NodeHttpHandler conf
     if (!isSSL && !this.config.httpAgent) {
       this.config.httpAgent = await this.config.httpAgentProvider();
     }
+
+    // used to tell whether destroy() was called while this request was in flight.
+    const destroyCountAtStart = this.destroyCount;
 
     return new Promise((_resolve, _reject) => {
       let writeRequestBodyPromise: Promise<void> | undefined = undefined;

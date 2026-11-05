@@ -60,13 +60,40 @@ describe("NodeHttpHandler destroy()", () => {
   });
 
   it("can still be used after destroy()", async () => {
-    const handler = new NodeHttpHandler();
-    handler.destroy();
     hold = false;
+    const handler = new NodeHttpHandler();
+    const first = await handler.handle(request());
+    expect(first.response.statusCode).toBe(200);
 
-    const { response } = await handler.handle(request());
-    expect(response.statusCode).toBe(200);
-    expect(hits).toBe(1);
+    handler.destroy();
+
+    const second = await handler.handle(request());
+    expect(second.response.statusCode).toBe(200);
+    expect(hits).toBe(2);
+    handler.destroy();
+  });
+
+  it("does not treat a failure as aborted when destroy() ran before the request started", async () => {
+    let releaseConfig!: () => void;
+    const configReady = new Promise<void>((r) => (releaseConfig = r));
+    const handler = new NodeHttpHandler(async () => {
+      await configReady;
+      return {};
+    });
+    const pending = handler.handle(request());
+
+    // destroy() runs while handle() is still waiting for its config.
+    handler.destroy();
+    releaseConfig();
+
+    while (hits === 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    server.closeAllConnections();
+
+    const error = await pending.catch((e) => e);
+    expect(error.code).toBe("ECONNRESET");
+    expect(isTransientError(error)).toBe(true);
     handler.destroy();
   });
 
