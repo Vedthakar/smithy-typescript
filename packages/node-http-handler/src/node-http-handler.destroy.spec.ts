@@ -10,6 +10,7 @@ describe("NodeHttpHandler destroy()", () => {
   let server: Server;
   let hits: number;
   let held: ServerResponse[];
+  let hold: boolean;
 
   const request = () =>
     new HttpRequest({
@@ -24,9 +25,15 @@ describe("NodeHttpHandler destroy()", () => {
   beforeEach(async () => {
     hits = 0;
     held = [];
+    hold = true;
     server = http.createServer((_req: IncomingMessage, res: ServerResponse) => {
       hits += 1;
-      held.push(res); // hold the response open, like a long poll.
+      if (hold) {
+        held.push(res); // hold the response open, like a long poll.
+        return;
+      }
+      res.writeHead(200);
+      res.end("ok");
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   });
@@ -52,14 +59,47 @@ describe("NodeHttpHandler destroy()", () => {
     expect(hits).toBe(1);
   });
 
-  it("rejects new requests after destroy() without contacting the server", async () => {
+  it("can still be used after destroy()", async () => {
     const handler = new NodeHttpHandler();
     handler.destroy();
+    hold = false;
 
-    const error = await handler.handle(request()).catch((e) => e);
+    const { response } = await handler.handle(request());
+    expect(response.statusCode).toBe(200);
+    expect(hits).toBe(1);
+    handler.destroy();
+  });
+
+  it("resolves a request whose response arrived before destroy()", async () => {
+    hold = false;
+    const handler = new NodeHttpHandler();
+    const pending = handler.handle(request());
+    const { response } = await pending;
+
+    handler.destroy();
+
+    await expect(pending).resolves.toBeDefined();
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("keeps working for another client that shares the handler", async () => {
+    const shared = new NodeHttpHandler();
+    const first = shared.handle(request());
+    while (hits === 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    // one client is destroyed while its request is in flight.
+    shared.destroy();
+    const error = await first.catch((e) => e);
     expect(error.name).toBe("AbortError");
-    expect(isTransientError(error)).toBe(false);
-    expect(hits).toBe(0);
+
+    // the other client's later requests still succeed.
+    hold = false;
+    const { response } = await shared.handle(request());
+    expect(response.statusCode).toBe(200);
+    expect(hits).toBe(2);
+    shared.destroy();
   });
 
   it("still surfaces an ordinary ECONNRESET as transient", async () => {

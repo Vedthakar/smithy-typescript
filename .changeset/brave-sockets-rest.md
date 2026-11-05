@@ -2,4 +2,4 @@
 "@smithy/node-http-handler": patch
 ---
 
-Reject in-flight and new requests with a non-retryable `AbortError` after `NodeHttpHandler.destroy()`, so destroyed clients no longer retry on a fresh socket.
+Reject requests whose sockets are closed by `NodeHttpHandler.destroy()` with a non-retryable `AbortError`, so they are no longer retried on a fresh socket. The handler remains usable after `destroy()`.
