@@ -85,11 +85,13 @@ export namespace GetItemOutput {
  */
 export interface PingInput {
   message?: string | undefined;
+  cookie?: string | undefined;
 }
 
 export namespace PingInput {
   const memberValidators : {
     message?: __MultiConstraintValidator<string>,
+    cookie?: __MultiConstraintValidator<string>,
   } = {};
   /**
    * @internal
@@ -102,12 +104,17 @@ export namespace PingInput {
             memberValidators["message"] = new __NoOpValidator();
             break;
           }
+          case "cookie": {
+            memberValidators["cookie"] = new __NoOpValidator();
+            break;
+          }
         }
       }
       return memberValidators[member]!!;
     }
     return [
       ...getMemberValidator("message").validate(obj.message, `${path}/message`),
+      ...getMemberValidator("cookie").validate(obj.cookie, `${path}/cookie`),
     ];
   }
 }

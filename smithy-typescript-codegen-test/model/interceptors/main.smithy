@@ -19,11 +19,16 @@ service InterceptorExample {
 
 /// A plain operation with no auth. Exercises the full pipeline:
 /// deserialize, validate, invoke, serialize.
+/// Also exercises case-insensitive @httpHeader reads (#1969).
 @http(method: "POST", uri: "/ping")
 operation Ping {
     input := {
         message: String
+
+        @httpHeader("cookie")
+        cookie: String
     }
+
     output := {
         message: String
     }
