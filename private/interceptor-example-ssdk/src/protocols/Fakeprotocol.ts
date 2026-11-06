@@ -26,6 +26,14 @@ export const deserializeGetItemRequest = async (
   output: __HttpRequest,
   context: __SerdeContext
 ): Promise<GetItemServerInput> => {
+  for (const header in output.headers) {
+    if (!Object.prototype.hasOwnProperty.call(output.headers, header)) {
+      continue;
+    }
+    const value = output.headers[header];
+    delete output.headers[header];
+    output.headers[header.toLowerCase()] = value;
+  }
   const contentTypeHeaderKey: string | undefined = Object.keys(output.headers).find(key => key.toLowerCase() === 'content-type');
   if (contentTypeHeaderKey != null) {
     const contentType = output.headers[contentTypeHeaderKey];
@@ -55,6 +63,14 @@ export const deserializePingRequest = async (
   output: __HttpRequest,
   context: __SerdeContext
 ): Promise<PingServerInput> => {
+  for (const header in output.headers) {
+    if (!Object.prototype.hasOwnProperty.call(output.headers, header)) {
+      continue;
+    }
+    const value = output.headers[header];
+    delete output.headers[header];
+    output.headers[header.toLowerCase()] = value;
+  }
   const contentTypeHeaderKey: string | undefined = Object.keys(output.headers).find(key => key.toLowerCase() === 'content-type');
   if (contentTypeHeaderKey != null) {
     const contentType = output.headers[contentTypeHeaderKey];
@@ -70,6 +86,7 @@ export const deserializePingRequest = async (
     };
   };
   const contents: any = map({
+    [_c]: [, output.headers[_c]],
   });
   const data: Record<string, any> = __expectNonNull((__expectObject(await parseBody(output.body, context))), "body");
   return contents;
@@ -232,6 +249,8 @@ const deserializeMetadata = (output: __HttpResponse): __ResponseMetadata => ({
 
 // Encode Uint8Array data into string with utf-8.
 const collectBodyString = (streamBody: any, context: __SerdeContext): Promise<string> => collectBody(streamBody, context).then(body => context.utf8Encoder(body))
+
+const _c = "cookie";
 
 const parseBody = (streamBody: any, context: __SerdeContext): any => collectBodyString(streamBody, context).then(encoded => {
   if (encoded.length) {

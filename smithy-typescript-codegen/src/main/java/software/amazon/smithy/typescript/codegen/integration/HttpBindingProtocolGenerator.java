@@ -2096,6 +2096,8 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
             contextType,
             inputType,
             () -> {
+                // HeaderBag keys are case-insensitive; normalize before binding reads.
+                normalizeHttpHeaderKeys(context, "output");
                 handleContentType(context, operation, bindingIndex);
                 handleAccept(context, operation, bindingIndex);
                 // Start deserializing the response.
@@ -2490,6 +2492,9 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
                     () -> writer.write("return $L(output, context);", errorMethodName)
                 );
 
+                // HeaderBag keys are case-insensitive; normalize before binding reads.
+                normalizeHttpHeaderKeys(context, "output");
+
                 // Start deserializing the response.
                 writer.openBlock("const contents: any = map({", "});", () -> {
                     writer.write("$$metadata: deserializeMetadata(output),");
@@ -2532,6 +2537,9 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
             outputName,
             errorSymbol,
             () -> {
+                // HeaderBag keys are case-insensitive; normalize before binding reads.
+                normalizeHttpHeaderKeys(context, outputName);
+
                 writer.openBlock("const contents: any = map({", "});", () -> {
                     readResponseHeaders(context, error, bindingIndex, outputName);
                 });
@@ -2590,6 +2598,29 @@ public abstract class HttpBindingProtocolGenerator implements ProtocolGenerator 
             // Deserialize response body just like in a normal response.
             return readResponseBody(context, error, bindingIndex);
         }
+    }
+
+    /**
+     * Lowercases HTTP header map keys in place so {@code @httpHeader} and
+     * {@code @httpPrefixHeaders} lookups are case-insensitive, matching HTTP
+     * and the schema-mode {@code HttpBindingProtocol} deserializer.
+     *
+     * @param context the generation context.
+     * @param outputName the name of the request/response variable whose headers to normalize.
+     */
+    private void normalizeHttpHeaderKeys(GenerationContext context, String outputName) {
+        TypeScriptWriter writer = context.getWriter();
+        writer.openBlock("for (const header in $L.headers) {", "}", outputName, () -> {
+            writer.openBlock(
+                "if (!Object.prototype.hasOwnProperty.call($L.headers, header)) {",
+                "}",
+                outputName,
+                () -> writer.write("continue;")
+            );
+            writer.write("const value = $L.headers[header];", outputName);
+            writer.write("delete $L.headers[header];", outputName);
+            writer.write("$L.headers[header.toLowerCase()] = value;", outputName);
+        });
     }
 
     private void readResponseHeaders(
